@@ -17,5 +17,7 @@ Follow these steps to set up the project on your local machine:
    ```bash
    git clone https://github.com/Fidel-wole/GroupBot
    cd GroupBot
-
-jj
+2. **Install Dependencies**
+Make sure you have Node.js installed. Then, install the required npm packages:
+```bash
+npm install
