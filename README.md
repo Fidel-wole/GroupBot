@@ -19,5 +19,12 @@ Follow these steps to set up the project on your local machine:
    cd GroupBot
 2. **Install Dependencies**
 Make sure you have Node.js installed. Then, install the required npm packages:
-```bash
-npm install
+   ```bash
+   npm install
+3. **Set Up Environment Variables**
+Create a `.env` file in the root directory of the project and add your Telegram bot token:
+   ```plaintext
+   TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+4. **Running the Bot**
+      ```bash
+      npm start
