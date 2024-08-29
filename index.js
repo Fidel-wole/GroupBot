@@ -2,6 +2,7 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const fs = require('fs');
 const express = require('express');
+const isUrl = require('is-url'); // You can use the 'is-url' package to validate URLs
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
@@ -52,7 +53,11 @@ Read more: ${post.linkToBlog}
 
           groupChatIds.forEach((groupId) => {
             if (post.image) {
-              bot.sendPhoto(groupId, post.image, { caption: message });
+              if (isUrl(post.image)) {
+                bot.sendPhoto(groupId, post.image, { caption: message });
+              } else {
+                bot.sendMessage(chatId, 'The image URL provided is not valid.');
+              }
             } else {
               bot.sendMessage(groupId, message);
             }
