@@ -20,6 +20,7 @@ app.get('/', (req, res) => {
 });
 
 let groupChatIds = [];
+let botActive = true;
 
 if (fs.existsSync('groupChatIds.json')) {
   groupChatIds = JSON.parse(fs.readFileSync('groupChatIds.json', 'utf8'));
@@ -83,8 +84,17 @@ bot.onText(/\/start/, (msg) => {
     chatId,
     "Hello! Send me a JSON array of blog posts, and I'll share them with your groups."
   );
+ botActive = true;
 });
 
+bot.onText(/\/stop/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(
+    chatId,
+    "Hello! The bot is now inactive. Send me '/start' to enable it again."
+  );
+  botActive = false; // Disable the bot
+});
 // Start the HTTP server
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
