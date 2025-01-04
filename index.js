@@ -8,7 +8,7 @@ const express = require("express");
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-const JOB_API_ENDPOINT = "https://remoteworldwide.net/api/jobs/bot";
+const JOB_API_ENDPOINT = `${process.env.JOB_API_URL}`;
 const PORT = process.env.PORT || 3000;
 
 let groupChatIds = [];
@@ -27,7 +27,10 @@ const saveGroupChatIds = () => {
   fs.writeFileSync("groupChatIds.json", JSON.stringify(groupChatIds, null, 2));
 };
 const saveJobMessageMap = () => {
-  fs.writeFileSync("jobMessageMap.json", JSON.stringify(jobMessageMap, null, 2));
+  fs.writeFileSync(
+    "jobMessageMap.json",
+    JSON.stringify(jobMessageMap, null, 2)
+  );
 };
 
 // Track new group IDs
@@ -46,25 +49,54 @@ bot.on("message", (msg) => {
 // Fetch and post or update jobs
 const fetchAndPostJobs = async () => {
   try {
-    const { data: jobs } = await axios.get(JOB_API_ENDPOINT);
+    const response = await axios.get(JOB_API_ENDPOINT, {
+      headers: {
+        Authorization: `Bearer - ${process.env.BEARER_TOKEN}`,
+      },
+    });
+
+    const jobs = response.data.data;
+    console.log(jobs);
 
     for (const job of jobs) {
       if (!job.isActive) continue;
 
+      const generateHashtags = (job) => {
+        const hashtags = [];
+        
+        // Generate a hashtag from the first three words of the job title
+        if (job.title) {
+          const titleWords = job.title.split(" ").slice(0, 2).join("").toLowerCase();
+          hashtags.push(`#${titleWords}`);
+        }
+      
+        // Add hashtags for the region and job type
+        if (job.region) 
+          hashtags.push(`#${job.region.toLowerCase().replace(/ /g, "")}`);
+        if (job.jobType) 
+          hashtags.push(`#${job.jobType.toLowerCase().replace(/ /g, "")}`);
+        
+        return hashtags.join(" ");
+      };
+      
       const jobMessage = `
-📌 *${job.title}*
-💼 *Company*: ${job.company.name}
-📍 *Region*: ${job.region}
-🕒 *Job Type*: ${job.jobType} | *Seniority*: ${job.seniority}
-🏷 *Category*: ${job.category}
-🔗 [Apply Here](${job.applicationUrl})
-🗓 *Posted On*: ${new Date(job.createdAt).toLocaleDateString()}
+      [${job.title}](${job.applicationUrl}) at *${job.company.name}*
+      
+🌍 *#Remote* ${job.region}
+    
+📍 Anywhere in the world
+      
+#wordwideremote 
+#remoteworldwide
+${generateHashtags(job)}
       `;
-
+      
       if (jobMessageMap[job.id]) {
         // Update existing messages if content has changed
         if (jobMessageMap[job.id].content !== jobMessage) {
-          for (const [groupId, messageId] of Object.entries(jobMessageMap[job.id].groups)) {
+          for (const [groupId, messageId] of Object.entries(
+            jobMessageMap[job.id].groups
+          )) {
             try {
               await bot.editMessageText(jobMessage, {
                 chat_id: groupId,
@@ -72,7 +104,10 @@ const fetchAndPostJobs = async () => {
                 parse_mode: "Markdown",
               });
             } catch (err) {
-              console.error(`Failed to update message in group ${groupId}:`, err.message);
+              console.error(
+                `Failed to update message in group ${groupId}:`,
+                err.message
+              );
             }
           }
           jobMessageMap[job.id].content = jobMessage;
@@ -89,7 +124,10 @@ const fetchAndPostJobs = async () => {
             });
             jobMessageMap[job.id].groups[groupId] = sentMessage.message_id;
           } catch (err) {
-            console.error(`Failed to send job to group ${groupId}:`, err.message);
+            console.error(
+              `Failed to send job to group ${groupId}:`,
+              err.message
+            );
           }
         }
         saveJobMessageMap();
@@ -101,7 +139,7 @@ const fetchAndPostJobs = async () => {
 };
 
 // Schedule job fetching every minute
-cron.schedule("* * * * *", () => {
+cron.schedule("0 0 * * *", () => {
   console.log("Fetching and posting jobs...");
   fetchAndPostJobs();
 });
