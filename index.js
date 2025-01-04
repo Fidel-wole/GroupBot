@@ -1,101 +1,80 @@
-require('dotenv').config();
-const TelegramBot = require('node-telegram-bot-api');
-const fs = require('fs');
-const express = require('express');
-const isUrl = require('is-url'); // You can use the 'is-url' package to validate URLs
+require("dotenv").config();
+const TelegramBot = require("node-telegram-bot-api");
+const axios = require("axios");
+const fs = require("fs");
+const cron = require("node-cron");
+const express = require("express");
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-// Create an Express application
-const app = express();
-const port = process.env.PORT || 3000;
-
-// Middleware to handle JSON requests
-app.use(express.json());
-
-// HTTP route for basic health check
-app.get('/', (req, res) => {
-  res.send('Telegram bot is running');
-});
+const JOB_API_ENDPOINT = "https://remoteworldwide.net/api/jobs/bot";
+const PORT = process.env.PORT || 3000;
 
 let groupChatIds = [];
-let botActive = true;
+const postedJobIds = new Set();
 
-if (fs.existsSync('groupChatIds.json')) {
-  groupChatIds = JSON.parse(fs.readFileSync('groupChatIds.json', 'utf8'));
+if (fs.existsSync("groupChatIds.json")) {
+  groupChatIds = JSON.parse(fs.readFileSync("groupChatIds.json", "utf8"));
 }
 
 const saveGroupChatIds = () => {
-  fs.writeFileSync('groupChatIds.json', JSON.stringify(groupChatIds));
+  fs.writeFileSync("groupChatIds.json", JSON.stringify(groupChatIds, null, 2));
 };
 
-bot.on('message', (msg) => {
+bot.on("message", (msg) => {
   const chatId = msg.chat.id;
 
-  if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+  if (["group", "supergroup"].includes(msg.chat.type)) {
     if (!groupChatIds.includes(chatId)) {
       groupChatIds.push(chatId);
       saveGroupChatIds();
+      console.log(`Added new group: ${chatId}`);
     }
   }
+});
 
-  if (msg.chat.type === 'private') {
-    try {
-      const posts = JSON.parse(msg.text);
+const fetchAndPostJobs = async () => {
+  try {
+    const { data: jobs } = await axios.get(JOB_API_ENDPOINT);
 
-      if (Array.isArray(posts)) {
-        posts.forEach((post) => {
-          const message = `
-${post.description}\n
-Tag: ${post.tag}\n
-Read more: ${post.linkToBlog}
-`;
+    for (const job of jobs) {
+      if (postedJobIds.has(job.id) || !job.isActive) continue; // Skip already posted or inactive jobs
 
-          groupChatIds.forEach((groupId) => {
-            if (post.image) {
-              if (isUrl(post.image)) {
-                bot.sendPhoto(groupId, post.image, { caption: message });
-              } else {
-                bot.sendMessage(chatId, 'The image URL provided is not valid.');
-              }
-            } else {
-              bot.sendMessage(groupId, message);
-            }
+      const jobMessage = `
+📌 *${job.title}*
+💼 *Company*: ${job.company.name}
+📍 *Region*: ${job.region}
+🕒 *Job Type*: ${job.jobType} | *Seniority*: ${job.seniority}
+🏷 *Category*: ${job.category}
+🔗 [Apply Here](${job.applicationUrl})
+🗓 *Posted On*: ${new Date(job.createdAt).toLocaleDateString()}
+      `;
+
+      for (const groupId of groupChatIds) {
+        try {
+          await bot.sendMessage(groupId, jobMessage, {
+            parse_mode: "Markdown",
           });
-        });
-
-        bot.sendMessage(chatId, 'Message sent to groups successfully');
-      } else {
-        bot.sendMessage(chatId, 'Please send a valid JSON array.');
+        } catch (err) {
+          console.error(`Failed to send job to group ${groupId}:`, err.message);
+        }
       }
-    } catch (error) {
-      bot.sendMessage(
-        chatId,
-        'There was an error processing your message. Please make sure the format is correct.'
-      );
+
+      // Mark the job as posted
+      postedJobIds.add(job.id);
     }
+  } catch (error) {
+    console.error("Error fetching jobs:", error.message);
   }
+};
+
+// Schedule job fetching every 5 minutes
+cron.schedule("*/5 * * * *", () => {
+  console.log("Fetching and posting jobs...");
+  fetchAndPostJobs();
 });
 
-bot.onText(/\/start/, (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(
-    chatId,
-    "Hello! Send me a JSON array of blog posts, and I'll share them with your groups."
-  );
- botActive = true;
-});
-
-bot.onText(/\/stop/, (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(
-    chatId,
-    "Hello! The bot is now inactive. Send me '/start' to enable it again."
-  );
-  botActive = false; // Disable the bot
-});
-// Start the HTTP server
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+const app = express();
+app.get("/", (req, res) => res.send("Bot is running."));
+app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
